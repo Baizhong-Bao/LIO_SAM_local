@@ -2,8 +2,11 @@ cmake_minimum_required(VERSION 2.8.3)
 project(lio_sam)
 
 set(CMAKE_BUILD_TYPE "Release")
-set(CMAKE_CXX_FLAGS "-std=c++11")
+set(CMAKE_CXX_FLAGS "-std=c++14")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g -pthread")
+
+# set(OpenCV_DIR /usr/local/share/OpenCV)
+set(cv_bridge_DIR /usr/local/share/cv_bridge/cmake)
 
 find_package(catkin REQUIRED COMPONENTS
   tf
@@ -23,9 +26,9 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package(OpenMP REQUIRED)
 find_package(PCL REQUIRED QUIET)
-find_package(OpenCV REQUIRED QUIET)
+find_package(OpenCV 4.7.0 REQUIRED QUIET PATHS /usr/local)
 find_package(GTSAM REQUIRED QUIET)
-find_package(Boost REQUIRED COMPONENTS timer)
+find_package(Boost REQUIRED COMPONENTS thread timer chrono serialization)
 
 add_message_files(
   DIRECTORY msg
@@ -101,3 +104,7 @@ target_link_libraries(${PROJECT_NAME}_mapOptmization Boost::timer ${catkin_LIBRA
 # IMU Preintegration
 add_executable(${PROJECT_NAME}_imuPreintegration src/imuPreintegration.cpp)
 target_link_libraries(${PROJECT_NAME}_imuPreintegration Boost::timer ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} gtsam)
+
+# Semantic info
+add_executable(${PROJECT_NAME}_mapSemantic src/mapSemantic.cpp)
+target_link_libraries(${PROJECT_NAME}_mapSemantic Boost::timer ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES})

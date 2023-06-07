@@ -68,7 +68,9 @@ private:
 
     pcl::PointCloud<PointXYZIRT>::Ptr laserCloudIn;
     pcl::PointCloud<OusterPointXYZIRT>::Ptr tmpOusterCloudIn;
+    // 当期帧运动畸变校正之后的激光点云
     pcl::PointCloud<PointType>::Ptr   fullCloud;
+    // 从fullCloud中提取有效点
     pcl::PointCloud<PointType>::Ptr   extractedCloud;
 
     int deskewFlag;
