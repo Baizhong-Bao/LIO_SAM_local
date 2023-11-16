@@ -39,6 +39,7 @@
 #include <tf/transform_listener.h>
 #include <tf/transform_datatypes.h>
 #include <tf/transform_broadcaster.h>
+#include "tf2_sensor_msgs/tf2_sensor_msgs.h"
  
 #include <vector>
 #include <cmath>
@@ -117,6 +118,14 @@ public:
     Eigen::Vector3d extTrans;
     Eigen::Quaterniond extQRPY;
 
+    // cam
+    vector<double> camIntrinsicV;
+    vector<double> camDistortionV;
+    vector<double> lidar2camExtrinsicV;
+    Eigen::Matrix3d camIntrinsic;
+    Eigen::Matrix<double, Eigen::Dynamic, 1> camDistortion;
+    Eigen::Matrix4d lidar2camExtrinsic;
+
     // LOAM
     float edgeThreshold;
     float surfThreshold;
@@ -154,6 +163,12 @@ public:
     float globalMapVisualizationSearchRadius;
     float globalMapVisualizationPoseDensity;
     float globalMapVisualizationLeafSize;
+
+    // dynamic
+    bool dynamic;
+
+    // kitti sequence
+    string sequence;
 
     ParamServer()
     {
@@ -217,6 +232,20 @@ public:
         extRPY = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extRPYV.data(), 3, 3);
         extTrans = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extTransV.data(), 3, 1);
         extQRPY = Eigen::Quaterniond(extRPY).inverse();
+
+        // cam
+        nh.param<vector<double>>("lio_sam/camIntrinsic", camIntrinsicV, vector<double>());
+        nh.param<vector<double>>("lio_sam/camDistortion", camDistortionV, vector<double>());
+        nh.param<vector<double>>("lio_sam/lidar2cam", lidar2camExtrinsicV, vector<double>());
+        camIntrinsic = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(camIntrinsicV.data(), 3, 3);
+        camDistortion = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(camDistortionV.data(),5, 1);
+        lidar2camExtrinsic = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(lidar2camExtrinsicV.data(), 4, 4);
+
+        // dynamic
+        nh.param<bool>("lio_sam/dynamic", dynamic, false);
+
+        // kitti sequence
+        nh.param<string>("lio_sam/kittiSequence", sequence, "05");
 
         nh.param<float>("lio_sam/edgeThreshold", edgeThreshold, 0.1);
         nh.param<float>("lio_sam/surfThreshold", surfThreshold, 0.1);

@@ -20,6 +20,12 @@
   <build_depend>tf</build_depend>
   <run_depend>tf</run_depend>
 
+  <build_depend>tf2</build_depend>
+  <run_depend>tf2</run_depend>
+
+  <build_depend>tf2_sensor_msgs</build_depend>
+  <run_depend>tf2_sensor_msgs</run_depend>
+
   <build_depend>cv_bridge</build_depend>
   <run_depend>cv_bridge</run_depend>
 
@@ -44,5 +50,8 @@
 
   <build_depend>GTSAM</build_depend>
   <run_depend>GTSAM</run_depend>
+  
+  <build_depend>message_filters</build_depend>
+  <run_depend>messagr_filters</run_depend>
 
 </package>

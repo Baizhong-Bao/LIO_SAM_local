@@ -10,6 +10,8 @@ set(cv_bridge_DIR /usr/local/share/cv_bridge/cmake)
 
 find_package(catkin REQUIRED COMPONENTS
   tf
+  tf2
+  tf2_sensor_msgs
   roscpp
   rospy
   cv_bridge
@@ -22,6 +24,7 @@ find_package(catkin REQUIRED COMPONENTS
   nav_msgs
   message_generation
   visualization_msgs
+  message_filters
 )
 
 find_package(OpenMP REQUIRED)
@@ -86,7 +89,7 @@ link_directories(
 ###########
 
 # Range Image Projection
-add_executable(${PROJECT_NAME}_imageProjection src/imageProjection.cpp)
+add_executable(${PROJECT_NAME}_imageProjection src/imageProjection_v3.cpp)
 add_dependencies(${PROJECT_NAME}_imageProjection ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
 target_link_libraries(${PROJECT_NAME}_imageProjection ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES})
 
@@ -106,5 +109,5 @@ add_executable(${PROJECT_NAME}_imuPreintegration src/imuPreintegration.cpp)
 target_link_libraries(${PROJECT_NAME}_imuPreintegration Boost::timer ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} gtsam)
 
 # Semantic info
-add_executable(${PROJECT_NAME}_mapSemantic src/mapSemantic.cpp)
+add_executable(${PROJECT_NAME}_mapSemantic src/mapSemantic_dashgo.cpp)
 target_link_libraries(${PROJECT_NAME}_mapSemantic Boost::timer ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES})

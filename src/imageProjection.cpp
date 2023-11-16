@@ -531,6 +531,7 @@ public:
             thisPoint.y = laserCloudIn->points[i].y;
             thisPoint.z = laserCloudIn->points[i].z;
             thisPoint.intensity = laserCloudIn->points[i].intensity;
+            // if(thisPoint.x < 0) continue;
 
             float range = pointDistance(thisPoint);
             if (range < lidarMinRange || range > lidarMaxRange)

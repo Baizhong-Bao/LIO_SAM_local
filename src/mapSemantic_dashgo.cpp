@@ -1,5 +1,8 @@
 #include "utility.h"
 #include "lio_sam/cloud_info.h"
+#include "message_filters/subscriber.h"
+#include "message_filters/time_synchronizer.h"
+#include "message_filters/sync_policies/approximate_time.h"
 // Net output params
 struct OutputSeg
 {
@@ -60,6 +63,10 @@ private:
     std::mutex lidarLock;
     std::mutex imgLock;
 
+    Eigen::Matrix4d lidarCamExtrin;
+    Eigen::Affine3d transformA = Eigen::Affine3d::Identity();
+    
+
 public:
     // 构造函数
     MapSemantic()
@@ -80,46 +87,94 @@ public:
         net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
         net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
 
+        // lidar -> cam params
+        lidarCamExtrin << lidar2camExtrinsic(0, 0), lidar2camExtrinsic(0, 1), lidar2camExtrinsic(0, 2), lidar2camExtrinsic(0, 3),
+                          lidar2camExtrinsic(1, 0), lidar2camExtrinsic(1, 1), lidar2camExtrinsic(1, 2), lidar2camExtrinsic(1, 3),
+                          lidar2camExtrinsic(2, 0), lidar2camExtrinsic(2, 1), lidar2camExtrinsic(2, 2), lidar2camExtrinsic(2, 3), 0.0, 0.0, 0.0, 1.0;
+        Eigen::Matrix4d t;
+        t = lidarCamExtrin.inverse();
+        transformA.matrix() <<  t(0, 0), t(0, 1), t(0, 2), t(0, 3),
+                                t(1, 0), t(1, 1), t(1, 2), t(1, 3),
+                                t(2, 0), t(2, 1), t(2, 2), t(2, 3), 
+                                t(3, 0), t(3, 1), t(3, 2), t(3, 3);
 
 
-        subCloudInfo = nh.subscribe<lio_sam::cloud_info>("lio_sam/deskew/cloud_info", 1, &MapSemantic::cloudInfoHandler, this, ros::TransportHints().tcpNoDelay());
-        subImg = nh.subscribe<sensor_msgs::Image>("kitti/camera_color_left/image_raw", 1, &MapSemantic::imgHandler, this, ros::TransportHints().tcpNoDelay());
+        // 消息同步
+        message_filters::Subscriber<sensor_msgs::Image> subImageLeft(nh, "camera/color/image_raw", 1);
+        message_filters::Subscriber<sensor_msgs::Image> subImageRight(nh, "camera/aligned_depth_to_color/image_raw", 1);
+        message_filters::Subscriber<lio_sam::cloud_info> subCloudInfo(nh, "lio_sam/deskew/cloud_info", 1);
+        typedef message_filters::sync_policies::ApproximateTime<lio_sam::cloud_info, sensor_msgs::Image, sensor_msgs::Image> mySyncPolicy;
+        message_filters::Synchronizer<mySyncPolicy> sync(mySyncPolicy(10), subCloudInfo, subImageLeft, subImageRight);
+        sync.registerCallback(boost::bind(&MapSemantic::cloudInfoImagehandler, this, _1, _2, _3));
+
+        // std::cout << "debug file: " <<__FILE__ << " lin: " << __LINE__ << std::endl;
 
         pubSemanticCloud    = nh.advertise<sensor_msgs::PointCloud2>("lio_sam/semantic/pointcloud", 1);
         pubSemanticImg      = nh.advertise<sensor_msgs::Image>("lio_sam/semantic/img", 1);
         pubCloudInfo        = nh.advertise<lio_sam::cloud_info>("lio_sam/semantic/cloud_info", 1);
 
+        ROS_INFO("\033[1;32m----> Semantic Segmentation Started.\033[0m");
+        // 注意！由于作用域原因，必须放在订阅函数之后（不能放在主函数中，否则无法订阅到话题）！
+        ros::spin();
+
     }
 
+
+    // const sensor_msgs::ImageConstPtr& imgRight
+    void cloudInfoImagehandler(const lio_sam::cloud_infoConstPtr msgIn, const sensor_msgs::ImageConstPtr& imgColor, const sensor_msgs::ImageConstPtr& imgDepth)
+    {
+        // std::cout << "debug file: " << __FILE__ << " " << "line: " << __LINE__ << std::endl;
+        detections.clear();
+        imgAndMask.clear();
+        cloudInfo = *msgIn;
+
+        // process left image and detectection(segmantation)
+        cv_bridge::CvImagePtr cvPtrColor = cv_bridge::toCvCopy(imgColor, sensor_msgs::image_encodings::TYPE_8UC3);
+        cv_bridge::CvImagePtr cvPtrDepth = cv_bridge::toCvCopy(imgDepth, sensor_msgs::image_encodings::TYPE_32FC1);
+        cv::Mat imageColor = cvPtrColor->image;
+        cv::Mat imageDepth = cvPtrDepth->image;
+        cv::Mat blob;
+        cv::Vec4d params;
+        preProcess(imageColor, blob, params);
+        process(blob, net, detections);
+        imgAndMask = post_process(imageColor, detections, class_name, params);
+        sensor_msgs::ImagePtr msgImg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", imgAndMask[0]).toImageMsg();
+        pubSemanticImg.publish(msgImg);
+
+        // process lidar point
+        cloudHeader = msgIn->header; // new cloud header
+        cv::Mat mask = imgAndMask[1];
+        pcl::PointCloud<pcl::PointXYZI>::Ptr cloudIn(new pcl::PointCloud<pcl::PointXYZI>), cloudOut(new pcl::PointCloud<pcl::PointXYZI>);
+        pcl::fromROSMsg(cloudInfo.cloud_deskewed, *cloudIn);
+
+        getLidarSemantic(mask, imageDepth, cloudIn, cloudOut);      
+    
+        cloudInfo.cloud_semantic = publishCloud(pubSemanticCloud, cloudOut, cloudHeader.stamp, lidarFrame);
+        pubCloudInfo.publish(cloudInfo);
+    }
+    
     void cloudInfoHandler(const lio_sam::cloud_infoConstPtr& msgIn)
     {
         cloudInfo = *msgIn;
+        std::cout << "debug file:" << __FILE__ << " " << "line: " << __LINE__ << std::endl;
+        std::cout << "cloudInfo time: " << msgIn->header.stamp.sec << std::endl;
         
         std::lock_guard<std::mutex> lock1(lidarLock);
         cloudHeader = msgIn->header; // new cloud header
         cv::Mat mask = imgAndMask[1];
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloudIn(new pcl::PointCloud<pcl::PointXYZI>), cloudOut(new pcl::PointCloud<pcl::PointXYZI>);
         pcl::fromROSMsg(msgIn->cloud_deskewed, *cloudIn);
-        getLidarSemantic(mask, cloudIn, cloudOut);
-        // sensor_msgs::PointCloud2 tempCloud;
-        // pcl::toROSMsg(*cloudOut, tempCloud);
-
-        
+        // getLidarSemantic(mask, cloudIn, cloudOut);
+    
         cloudInfo.cloud_semantic = publishCloud(pubSemanticCloud, cloudOut, cloudHeader.stamp, lidarFrame);
-        // tempCloud.header.stamp = cloudHeader.stamp;
-        // tempCloud.header.frame_id = lidarFrame;
-        // pubSemanticCloud.publish(tempCloud);
-        // cloudInfo.header = msgIn->header;
-        // cloudInfo.cloud_semantic = tempCloud;
-        // msgIn->cloud_semantic = tempCloud;
         pubCloudInfo.publish(cloudInfo);
-        
-
     }
 
     void imgHandler(const sensor_msgs::ImageConstPtr& img)
     {
         std::lock_guard<std::mutex> lock2(imgLock);
+        std::cout << "debug file:" << __FILE__ << " " << "line: " << __LINE__ << std::endl;
+        std::cout << "img time: " << img->header.stamp.sec << std::endl;
         detections.clear();
         imgAndMask.clear();
         // sensor_msg::Image 转OpenCV
@@ -322,8 +377,7 @@ public:
             cv::Size label_size = cv::getTextSize(label, 0.8, 0.8, 1, &baseLine);
             cv::putText(image, label, cv::Point(result[i].box.x, result[i].box.y), cv::FONT_HERSHEY_SIMPLEX, 0.8, color[result[i].id], 1);
         }
-        // cv::imshow("mask", blankImg);   // modify
-        // cv::imwrite("mask_007000_seg.png", blankImg);
+
         addWeighted(image, 0.5, mask, 0.5, 0, image);
         return {image, blankImg};
     }
@@ -401,52 +455,36 @@ public:
     }
 
     // lidar点云语义获取
-    void getLidarSemantic(cv::Mat img, pcl::PointCloud<pcl::PointXYZI>::Ptr cloudIn, pcl::PointCloud<pcl::PointXYZI>::Ptr cloudOut)
+    void getLidarSemantic(cv::Mat img, cv::Mat imgDepth, pcl::PointCloud<pcl::PointXYZI>::Ptr cloudIn, pcl::PointCloud<pcl::PointXYZI>::Ptr cloudOut)
     {
-        //store calibration data in Opencv matrices
-        cv::Mat P_rect_00(3,4,cv::DataType<double>::type);//3×4 projection matrix after rectification
-        cv::Mat R_rect_00(4,4,cv::DataType<double>::type);//3×3 rectifying rotation to make image planes co-planar
-        cv::Mat RT(4,4,cv::DataType<double>::type);//rotation matrix and translation vector
-        
-        RT.at<double>(0,0) = 7.533745e-03;RT.at<double>(0,1) = -9.999714e-01;RT.at<double>(0,2) = -6.166020e-04;RT.at<double>(0,2) = -4.069766e-03;
-        RT.at<double>(1,0) = 1.480249e-02;RT.at<double>(1,1) = 7.280733e-04;RT.at<double>(1,2) = -9.998902e-01;RT.at<double>(1,3) = -7.631618e-02;
-        RT.at<double>(2,0) = 9.998621e-01;RT.at<double>(2,1) = 7.523790e-03;RT.at<double>(2,2) = 1.480755e-02;RT.at<double>(2,3) = -2.717806e-01;
-        RT.at<double>(3,0) = 0.0;RT.at<double>(3,1) = 0.0;RT.at<double>(3,2) = 0.0;RT.at<double>(3,3) = 1.0;
-        
-        R_rect_00.at<double>(0,0) = 9.999239e-01;R_rect_00.at<double>(0,1) = 9.837760e-03;R_rect_00.at<double>(0,2) = -7.445048e-03;R_rect_00.at<double>(0,3) = 0.0;
-        R_rect_00.at<double>(1,0) = -9.869795e-03;R_rect_00.at<double>(1,1) = 9.999421e-01;R_rect_00.at<double>(1,2) = -4.278459e-03;R_rect_00.at<double>(1,3) = 0.0;
-        R_rect_00.at<double>(2,0) = 7.402527e-03;R_rect_00.at<double>(2,1) = 4.351614e-03;R_rect_00.at<double>(2,2) = 9.999631e-01;R_rect_00.at<double>(2,3) = 0.0;
-        R_rect_00.at<double>(3,0) = 0.0;R_rect_00.at<double>(3,1) = 0.0;R_rect_00.at<double>(3,2) = 0.0;R_rect_00.at<double>(3,3) = 1.0;
 
-        P_rect_00.at<double>(0,0) = 7.215377e+02;P_rect_00.at<double>(0,1) = 0.000000e+00;P_rect_00.at<double>(0,2) = 6.095593e+02;P_rect_00.at<double>(0,3) = 0.000000e+00;
-        P_rect_00.at<double>(1,0) = 0.000000e+00;P_rect_00.at<double>(1,1) = 7.215377e+02;P_rect_00.at<double>(1,2) = 1.728540e+02;P_rect_00.at<double>(1,3) = 0.000000e+00;
-        P_rect_00.at<double>(2,0) = 0.000000e+00;P_rect_00.at<double>(2,1) = 0.000000e+00;P_rect_00.at<double>(2,2) = 1.000000e+00;P_rect_00.at<double>(2,3) = 0.000000e+00;
-        cv::Mat X(4, 1, cv::DataType<double>::type);
-        cv::Mat Y(4, 1, cv::DataType<double>::type);
 
         int cloudSize = cloudIn->points.size();
         for (int i = 0; i < cloudSize; ++i)
         {
-            pcl::PointXYZI point(cloudIn->points[i]);
-            if (point.x < 0.0) continue;
+            pcl::PointXYZI pointIn(cloudIn->points[i]);
+            pcl::PointXYZI point;
+            point = pcl::transformPoint(pointIn,transformA);
 
-            X.at<double>(0,0) = point.x;
-            X.at<double>(1,0) = point.y;
-            X.at<double>(2,0) = point.z;
-            X.at<double>(3,0) = point.intensity;
+            if (point.z < 0.0) continue;
 
-            //apply the projection equation to map X onto the image plane of the camera. Store the result in Y
-            Y=P_rect_00*R_rect_00*RT*X;
-            // transform Y back into Euclidean coordinates and store the result in the variable pt
+            double xC = point.x / point.z;
+            double yC = point.y / point.z;
+            double zC = point.z;
+
             cv::Point pt;
-            pt.x = Y.at<double>(0, 0) / Y.at<double>(2, 0); 
-            pt.y = Y.at<double>(1, 0) / Y.at<double>(2, 0);
+            pt.x = camIntrinsic(0, 0) * xC + camIntrinsic(0, 2);
+            pt.y = camIntrinsic(1, 1) * yC + camIntrinsic(1, 2);
 
-            if (pt.x < 0 || pt.x > 1225 || pt.y < 0 || pt.y > 369) continue;
+            if (pt.x < 0 || pt.x > 639 || pt.y < 0 || pt.y > 479) continue;
             int cls = img.at<uchar>(int(pt.y), int(pt.x));
-            if (cls != 255) {
-                point.intensity = cls;
-                cloudOut->points.push_back(point);
+            float depth = imgDepth.at<float>(int(pt.y), int(pt.x)) / 1000.0;
+            // 根据lidar点云深度与相机点云深度过滤一部分深度不匹配的点云
+            if (cls != 255 && abs(depth - point.z) < 0.5) {
+                std::cout << "debug file:" << __FILE__ << " line: " << __LINE__ << std::endl;
+                std::cout << "image depth: " << depth << " lidar depth: " << point.z << " diff: " << abs(depth - point.z) << std::endl; 
+                pointIn.intensity = cls / 80.0;
+                cloudOut->points.push_back(pointIn);
             }
         }
     }
@@ -458,9 +496,9 @@ int main(int argc, char** argv)
 
     MapSemantic MS;
 
-    ROS_INFO("\033[1;32m----> Semantic Segmentation Started.\033[0m");
+    // ROS_INFO("\033[1;32m----> Semantic Segmentation Started.\033[0m");
 
-    ros::spin();
+    // ros::spin();
 
     return 0;
 }

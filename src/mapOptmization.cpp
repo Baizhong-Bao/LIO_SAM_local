@@ -542,7 +542,8 @@ public:
 
       cout << "****************************************************" << endl;
       cout << "Saving map to pcd files ..." << endl;
-      if(req.destination.empty()) saveMapDirectory = std::getenv("HOME") + savePCDDirectory;
+    //   if(req.destination.empty()) saveMapDirectory = std::getenv("HOME") + savePCDDirectory;
+      if(req.destination.empty()) saveMapDirectory =savePCDDirectory;
       else saveMapDirectory = std::getenv("HOME") + req.destination;
       cout << "Save destination: " << saveMapDirectory << endl;
       // create directory and remove old files;
@@ -559,11 +560,33 @@ public:
       pcl::PointCloud<PointType>::Ptr globalSurfCloud(new pcl::PointCloud<PointType>());
       pcl::PointCloud<PointType>::Ptr globalSurfCloudDS(new pcl::PointCloud<PointType>());
       pcl::PointCloud<PointType>::Ptr globalMapCloud(new pcl::PointCloud<PointType>());
+
+      // save tum style trajectory
+      std::ofstream foutTUM;
+      foutTUM.open(saveMapDirectory + "/kitti_" + sequence + "_tum_loop_traj.txt", std::ios::app);
+      foutTUM << std::fixed;
+
+
       for (int i = 0; i < (int)cloudKeyPoses3D->size(); i++) {
           *globalCornerCloud += *transformPointCloud(cornerCloudKeyFrames[i],  &cloudKeyPoses6D->points[i]);
           *globalSurfCloud   += *transformPointCloud(surfCloudKeyFrames[i],    &cloudKeyPoses6D->points[i]);
           cout << "\r" << std::flush << "Processing feature cloud " << i << " of " << cloudKeyPoses6D->size() << " ...";
+
+            float cy = cos((cloudKeyPoses6D->points[i].yaw)*0.5);
+            float sy = sin((cloudKeyPoses6D->points[i].yaw)*0.5);
+            float cr = cos((cloudKeyPoses6D->points[i].roll)*0.5);
+            float sr = sin((cloudKeyPoses6D->points[i].roll)*0.5);
+            float cp = cos((cloudKeyPoses6D->points[i].pitch)*0.5);
+            float sp = sin((cloudKeyPoses6D->points[i].pitch)*0.5);
+
+            float w = cy * cp * cr + sy * sp * sr;
+            float x = cy * cp * sr - sy * sp * cr;
+            float y = sy * cp * sr + cy * sp * cr;
+            float z = sy * cp * cr - cy * sp * sr;
+            //save the traj
+            foutTUM << setprecision(6) << cloudKeyPoses6D->points[i].time - cloudKeyPoses6D->points[0].time << " " << setprecision(9) << cloudKeyPoses6D->points[i].x << " " << cloudKeyPoses6D->points[i].y << " " << cloudKeyPoses6D->points[i].z << " " << x << " " << y << " " << z << " " << w << std::endl;
       }
+      foutTUM.close();
 
       if(req.resolution != 0)
       {
@@ -2070,6 +2093,13 @@ public:
         // save path for visualization
         // 更新里程计轨迹
         updatePath(thisPose6D);
+         // save tum style trajectory(no loopclosure)
+        tf::Quaternion q = tf::createQuaternionFromRPY(thisPose6D.roll, thisPose6D.pitch, thisPose6D.yaw);
+        std::ofstream fouttum(savePCDDirectory + "/kitti_" + sequence +"_tum_traj.txt", std::ios::app);
+        fouttum.setf(std::ios::scientific, std::ios::floatfield);
+        fouttum.precision(6);
+        fouttum << thisPose6D.time - cloudKeyPoses6D->points[0].time << " " << thisPose6D.x << " " << thisPose6D.y << " " << thisPose6D.z << " " << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << std::endl;
+        fouttum.close();
     }
 
     /**

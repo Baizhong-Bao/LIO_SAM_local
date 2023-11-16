@@ -2,7 +2,7 @@ lio_sam:
 
   # Topics
   pointCloudTopic: "points_raw"               # Point cloud data
-  imuTopic: "imu_correct" #"imu_raw"                         # IMU data
+  imuTopic:  "imu_raw" #"imu_correct"                         # IMU data
   odomTopic: "odometry/imu"                   # IMU pre-preintegration odometry, same frequency as IMU
   gpsTopic: "odometry/gpsz"                   # GPS odometry topic from navsat, see module_navsat.launch file
 
@@ -13,14 +13,20 @@ lio_sam:
   mapFrame: "map"
 
   # GPS Settings
-  useImuHeadingInitialization: true           # if using GPS data, set to "true"
+  useImuHeadingInitialization: false           # if using GPS data, set to "true"
   useGpsElevation: false                      # if GPS elevation is bad, set to "false"
   gpsCovThreshold: 2.0                        # m^2, threshold for using GPS data
   poseCovThreshold: 25.0                      # m^2, threshold for using GPS data
   
   # Export settings
-  savePCD: false                              # https://github.com/TixiaoShan/LIO-SAM/issues/3
-  savePCDDirectory: "/Downloads/LOAM/"        # in your home folder, starts and ends with "/". Warning: the code deletes "LOAM" folder then recreates it. See "mapOptimization" for implementation
+  savePCD: true                              # https://github.com/TixiaoShan/LIO-SAM/issues/3
+  savePCDDirectory: "/home/baobaizhong/Practice/experiment_results/kitti/kitti02/kitti_02_front_view_r0.3"        # 在mapoptimization.cpp中修改为绝对路径in your home folder, starts and ends with "/". Warning: the code deletes "LOAM" folder then recreates it. See "mapOptimization" for implementation
+
+  # dynamic
+  dynamic: false
+
+  # kitti sequence
+  kittiSequence: "02"
 
   # Sensor Settings
   sensor: velodyne                            # lidar sensor type, 'velodyne' or 'ouster' or 'livox'
@@ -28,7 +34,7 @@ lio_sam:
   N_SCAN: 64                                  # kitti
   Horizon_SCAN: 1800                          # lidar horizontal resolution (Velodyne:1800, Ouster:512,1024,2048, Livox Horizon: 4000)
   # downsampleRate: 1                           # default: 1. Downsample your data if too many points. i.e., 16 = 64 / 4, 16 = 16 / 1
-  downsampleRate: 4                           # kitti
+  downsampleRate: 1                           # kitti
   lidarMinRange: 1.0                          # default: 1.0, minimum lidar range to be used
   lidarMaxRange: 1000.0                       # default: 1000.0, maximum lidar range to be used
 
@@ -68,6 +74,25 @@ lio_sam:
                 -7.854027e-04, 9.998898e-01, -1.482298e-02, 
                 2.024406e-03, 1.482454e-02, 9.998881e-01]
 
+
+  # camera intrinsic 3x3
+  camIntrinsic: [ 3.8452258300781250e+02, 0., 3.2641238403320312e+02, 0.,
+                3.8405270385742188e+02, 2.4902148437500000e+02, 0., 0., 1. ]
+
+  # camera distortion k1, k2, k3, p1, p2
+  camDistortion: [ -5.5716544389724731e-02, 6.6164121031761169e-02,
+                  2.2369284124579281e-04, 2.6742147747427225e-04,
+                  -2.1298851817846298e-02 ]
+
+  # lidr->cam extrinsic 4x4
+  lidar2cam: [ 2.2550255026048571e-02, 4.2047205050400493e-02,
+              9.9886111073848016e-01, 2.1769077344169316e-01,
+              -9.9949854785220194e-01, 2.3163395903835426e-02,
+              2.1589579234951917e-02, -9.6389650310923364e-03,
+              -2.2229233895936618e-02, -9.9884708020680146e-01,
+              4.2548460874019645e-02, -1.4368370117742071e-01, 0., 0., 0., 1. ]
+
+
   # LOAM feature threshold
   edgeThreshold: 1.0
   surfThreshold: 0.1
@@ -78,13 +103,16 @@ lio_sam:
   odometrySurfLeafSize: 0.4                     # default: 0.4 - outdoor, 0.2 - indoor
   mappingCornerLeafSize: 0.2                    # default: 0.2 - outdoor, 0.1 - indoor
   mappingSurfLeafSize: 0.4                      # default: 0.4 - outdoor, 0.2 - indoor
+  # odometrySurfLeafSize: 0.8                     # default: 0.4 - outdoor, 0.2 - indoor
+  # mappingCornerLeafSize: 0.4                    # default: 0.2 - outdoor, 0.1 - indoor
+  # mappingSurfLeafSize: 0.8                      # default: 0.4 - outdoor, 0.2 - indoor
 
   # robot motion constraint (in case you are using a 2D robot)
   z_tollerance: 1000                            # meters
   rotation_tollerance: 1000                     # radians
 
   # CPU Params
-  numberOfCores: 4                              # number of cores for mapping optimization
+  numberOfCores: 6                              # number of cores for mapping optimization
   mappingProcessInterval: 0.15                  # seconds, regulate mapping frequency
 
   # Surrounding map
@@ -97,7 +125,7 @@ lio_sam:
   loopClosureEnableFlag: true
   loopClosureFrequency: 1.0                     # Hz, regulate loop closure constraint add frequency
   surroundingKeyframeSize: 50                   # submap size (when loop closure enabled)
-  historyKeyframeSearchRadius: 15.0             # meters, key frame that is within n meters from current pose will be considerd for loop closure
+  historyKeyframeSearchRadius:  15.0             # meters, key frame that is within n meters from current pose will be considerd for loop closure
   historyKeyframeSearchTimeDiff: 30.0           # seconds, key frame that is n seconds older will be considered for loop closure
   historyKeyframeSearchNum: 25                  # number of hostory key frames will be fused into a submap for loop closure
   historyKeyframeFitnessScore: 0.3              # icp threshold, the smaller the better alignment
