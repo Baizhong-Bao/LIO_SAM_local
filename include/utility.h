@@ -33,7 +33,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 
 #include <opencv2/opencv.hpp>
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge.h>
 
 #include <tf/LinearMath/Quaternion.h>
 #include <tf/transform_listener.h>

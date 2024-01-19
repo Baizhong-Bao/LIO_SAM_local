@@ -118,9 +118,9 @@ private:
     pcl::PointCloud<PointXYZIRT>::Ptr laserCloudIn;
     pcl::PointCloud<OusterPointXYZIRT>::Ptr tmpOusterCloudIn;
     // 当期帧运动畸变校正之后的激光点云
-    pcl::PointCloud<PointType>::Ptr   fullCloud;
+    pcl::PointCloud<PointType>::Ptr fullCloud;
     // 从fullCloud中提取有效点
-    pcl::PointCloud<PointType>::Ptr   extractedCloud;
+    pcl::PointCloud<PointType>::Ptr extractedCloud;
 
     // semantic
     pcl::PointCloud<PointXYZIRT>::Ptr semantic;
@@ -887,8 +887,8 @@ public:
         // std::cout << "Debug: " << std::endl;
         std::lock_guard<std::mutex> lock3(leftImageLock);
         leftImageQue.push_back(*leftImage);
-        if (leftCount % 10 == 0)
-        std::cout << "Debug: left image count: " << ++leftCount << std::endl;
+        // if (leftCount % 10 == 0)
+        std::cout << "Debug: left image queue: " << leftImageQue.size() << std::endl;
     }
     void rightImageHandler(const sensor_msgs::ImageConstPtr& rightImage)
     {

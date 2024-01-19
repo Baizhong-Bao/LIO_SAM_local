@@ -6,7 +6,7 @@ set(CMAKE_CXX_FLAGS "-std=c++14")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g -pthread")
 
 # set(OpenCV_DIR /usr/local/share/OpenCV)
-set(cv_bridge_DIR /usr/local/share/cv_bridge/cmake)
+# set(cv_bridge_DIR /usr/local/share/cv_bridge/cmake)
 
 find_package(catkin REQUIRED COMPONENTS
   tf
@@ -14,7 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_sensor_msgs
   roscpp
   rospy
-  cv_bridge
+  cv_bridge_1
   # pcl library
   pcl_conversions
   # msgs
@@ -76,9 +76,11 @@ include_directories(
 	${GTSAM_INCLUDE_DIR}
 )
 
+set(OpenCV_LIBRARY_DIRS "/usr/local/lib")
 # link directories
 link_directories(
 	include
+  lib
 	${PCL_LIBRARY_DIRS}
   ${OpenCV_LIBRARY_DIRS}
   ${GTSAM_LIBRARY_DIRS}
@@ -91,7 +93,7 @@ link_directories(
 # Range Image Projection
 add_executable(${PROJECT_NAME}_imageProjection src/imageProjection_v3.cpp)
 add_dependencies(${PROJECT_NAME}_imageProjection ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
-target_link_libraries(${PROJECT_NAME}_imageProjection ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES})
+target_link_libraries(${PROJECT_NAME}_imageProjection ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBS})
 
 # Feature Association
 add_executable(${PROJECT_NAME}_featureExtraction src/featureExtraction.cpp)
